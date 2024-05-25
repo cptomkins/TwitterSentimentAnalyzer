@@ -1,5 +1,6 @@
 import pandas as pd
 import logging
+import os
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 from tensorflow.keras.preprocessing.text import Tokenizer
@@ -9,17 +10,24 @@ from tensorflow.keras.layers import Embedding, LSTM, Dropout, Dense
 from tensorflow.keras.utils import to_categorical
 import matplotlib.pyplot as plt
 import numpy as np
-import logging
+import re
+import string
+from nltk.corpus import stopwords
 
-def validateModel(model, history, X_test_pad, y_test):
-    # Evaluate the model on the validation set
+def clean_text(text):
+    text = text.lower()
+    text = re.sub(f"[{re.escape(string.punctuation)}]", "", text)
+    text = re.sub(r"\d+", "", text)
+    text = re.sub(r"http\S+|www\S+|https\S+", "", text, flags=re.MULTILINE)
+    text = text.strip()
+    text = " ".join([word for word in text.split() if word not in stopwords.words('english')])
+    return text
+
+def evaluateModel(model, history, X_test_pad, y_test):
     val_loss, val_accuracy = model.evaluate(X_test_pad, y_test)
-
-    # Log the validation loss and accuracy
     logger.info(f"Validation Loss: {val_loss}")
     logger.info(f"Validation Accuracy: {val_accuracy}")
 
-    # Plot the training history
     history_dict = history.history
     acc = history_dict['accuracy']
     val_acc = history_dict['val_accuracy']
@@ -48,72 +56,98 @@ def validateModel(model, history, X_test_pad, y_test):
 
     plt.show()
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger()
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger()
 
-# Load the dataset with specified encoding
-df = pd.read_csv('..\\dataset\\training.1600000.processed.noemoticon.csv', encoding='ISO-8859-1')
+    logger.info("##### BEGIN #####")
 
-# Extract the relevant columns
-sentiments = df.iloc[:, 0]
-tweets = df.iloc[:, 5]
+    logger.info("Loading dataset...")
+    raw_data_path = '../dataset/training.1600000.processed.noemoticon.csv'
+    cleaned_data_path = '../dataset/cleaned/cleaned_tweets.csv'
 
-# Split the data into training and testing sets
-X_train, X_test, y_train, y_test = train_test_split(tweets, sentiments, test_size=0.2, random_state=42)
+    if not os.path.exists(cleaned_data_path):
+        df = pd.read_csv(raw_data_path, encoding='ISO-8859-1')
+        logger.debug("Dataset loaded.")
 
-# Log the number of samples
-logger.info(f"Number of training samples: {len(X_train)}")
-logger.info(f"Number of testing samples: {len(X_test)}")
+        logger.info("Extracting columns...")
+        sentiments = df.iloc[:, 0]
+        tweets = df.iloc[:, 5]
+        logger.debug("Columns extracted.")
 
-# Define the maximum number of words to be used and the maximum length of each sequence
-max_words = 10000
-max_len = 100
+        logger.info("Cleaning tweets...")
+        tweets = tweets.apply(clean_text)
+        logger.debug("Tweets cleaned.")
 
-# Initialize and fit the tokenizer
-tokenizer = Tokenizer(num_words=max_words, oov_token="<OOV>")
-tokenizer.fit_on_texts(X_train)
+        # Save cleaned tweets
+        os.makedirs(os.path.dirname(cleaned_data_path), exist_ok=True)
+        cleaned_df = pd.DataFrame({'sentiment': sentiments, 'tweet': tweets})
+        cleaned_df.to_csv(cleaned_data_path, index=False)
+        logger.info("Cleaned tweets saved.")
+    else:
+        cleaned_df = pd.read_csv(cleaned_data_path)
+        logger.info("Loaded cleaned tweets.")
 
-# Convert the tweets to sequences
-X_train_seq = tokenizer.texts_to_sequences(X_train)
-X_test_seq = tokenizer.texts_to_sequences(X_test)
+    sentiments = cleaned_df['sentiment']
+    tweets = cleaned_df['tweet']
 
-# Pad the sequences
-X_train_pad = pad_sequences(X_train_seq, maxlen=max_len, padding='post', truncating='post')
-X_test_pad = pad_sequences(X_test_seq, maxlen=max_len, padding='post', truncating='post')
+    logger.info("Splitting data...")
+    X_train, X_test, y_train, y_test = train_test_split(tweets, sentiments, test_size=0.2, random_state=42)
+    logger.debug("Data split into training and testing sets.")
 
-# Log the shape of the padded sequences
-logger.info(f"Training data shape: {X_train_pad.shape}")
-logger.info(f"Testing data shape: {X_test_pad.shape}")
+    logger.info(f"Number of training samples: {len(X_train)}")
+    logger.info(f"Number of testing samples: {len(X_test)}")
 
-# One-hot encode the sentiment labels
-y_train_cat = to_categorical(y_train, num_classes=5)
-y_test_cat = to_categorical(y_test, num_classes=5)
+    max_words = 10000
+    max_len = 100
 
-# Define the model with an LSTM layer for multi-class classification
-model = Sequential([
-    Embedding(input_dim=max_words, output_dim=16, input_length=max_len),
-    LSTM(64, return_sequences=True),
-    Dropout(0.2),
-    LSTM(32),
-    Dropout(0.2),
-    Dense(16, activation='relu'),
-    Dense(5, activation='softmax')  # 5 units for 5 classes
-])
+    logger.info("Initializing tokenizer...")
+    tokenizer = Tokenizer(num_words=max_words, oov_token="<OOV>")
+    tokenizer.fit_on_texts(X_train)
+    logger.debug("Tokenizer initialized and fitted.")
 
-# Compile the model
-model.compile(optimizer='adam',
-              loss='categorical_crossentropy',
-              metrics=['accuracy'])
+    logger.info("Converting texts to sequences...")
+    X_train_seq = tokenizer.texts_to_sequences(X_train)
+    X_test_seq = tokenizer.texts_to_sequences(X_test)
+    logger.debug("Texts converted to sequences.")
 
-# Build the model by providing a dummy input
-model.build(input_shape=(None, max_len))
+    logger.info("Padding sequences...")
+    X_train_pad = pad_sequences(X_train_seq, maxlen=max_len, padding='post', truncating='post')
+    X_test_pad = pad_sequences(X_test_seq, maxlen=max_len, padding='post', truncating='post')
+    logger.debug("Sequences padded.")
 
-# Log the model summary
-model.summary(print_fn=logger.info)
+    logger.info(f"Training data shape: {X_train_pad.shape}")
+    logger.info(f"Testing data shape: {X_test_pad.shape}")
 
-# Train the model
-history = model.fit(X_train_pad, y_train_cat, epochs=10, batch_size=32, validation_data=(X_test_pad, y_test_cat))
+    logger.info("One-hot encoding labels...")
+    y_train_cat = to_categorical(y_train, num_classes=5)
+    y_test_cat = to_categorical(y_test, num_classes=5)
+    logger.debug("Labels one-hot encoded.")
 
+    logger.info("Defining the model...")
+    model = Sequential([
+        Embedding(input_dim=max_words, output_dim=64, input_length=max_len),
+        LSTM(128, return_sequences=True),
+        Dropout(0.3),
+        LSTM(64),
+        Dropout(0.3),
+        Dense(32, activation='relu'),
+        Dense(5, activation='softmax')
+    ])
+    logger.debug("Model defined.")
 
-validateModel(model, history, X_test_pad, y_test)
+    logger.info("Compiling the model...")
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+                  loss='categorical_crossentropy',
+                  metrics=['accuracy'])
+    logger.debug("Model compiled.")
+
+    model.summary(print_fn=logger.info)
+
+    early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
+
+    logger.info("Training the model...")
+    history = model.fit(X_train_pad, y_train_cat, epochs=20, batch_size=64, validation_data=(X_test_pad, y_test_cat), callbacks=[early_stopping])
+    logger.debug("Model trained.")
+
+    evaluateModel(model, history, X_test_pad, y_test_cat)

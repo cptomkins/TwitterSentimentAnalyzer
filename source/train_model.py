@@ -1,5 +1,5 @@
+# ----- Third Party Imports
 import pandas as pd
-import logging
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 from tensorflow.keras.preprocessing.text import Tokenizer
@@ -7,44 +7,17 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Embedding, GRU, Dropout, Dense
 from tensorflow.keras.utils import to_categorical
-import matplotlib.pyplot as plt
 
-def evaluateModel(model, history, X_test_pad, y_test):
-    val_loss, val_accuracy = model.evaluate(X_test_pad, y_test)
-    logger.info(f"Validation Loss: {val_loss}")
-    logger.info(f"Validation Accuracy: {val_accuracy}")
+# ----- Python Imports
+import logging
+import argparse
+import os
 
-    history_dict = history.history
-    acc = history_dict['accuracy']
-    val_acc = history_dict['val_accuracy']
-    loss = history_dict['loss']
-    val_loss = history_dict['val_loss']
+# ----- Package Imports
+from training_utils import *
 
-    epochs = range(1, len(acc) + 1)
-
-    plt.figure(figsize=(12, 9))
-
-    plt.subplot(2, 1, 1)
-    plt.plot(epochs, acc, 'bo', label='Training accuracy')
-    plt.plot(epochs, val_acc, 'b', label='Validation accuracy')
-    plt.title('Training and validation accuracy')
-    plt.xlabel('Epochs')
-    plt.ylabel('Accuracy')
-    plt.legend()
-
-    plt.subplot(2, 1, 2)
-    plt.plot(epochs, loss, 'bo', label='Training loss')
-    plt.plot(epochs, val_loss, 'b', label='Validation loss')
-    plt.title('Training and validation loss')
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss')
-    plt.legend()
-
-    plt.show()
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-    logger = logging.getLogger()
+def run(log_level=logging.INFO):
+    logger = getLogger(level=log_level)
 
     logger.info("##### BEGIN #####")
 
@@ -66,8 +39,8 @@ if __name__ == "__main__":
     logger.info(f"Number of training samples: {len(X_train)}")
     logger.info(f"Number of testing samples: {len(X_test)}")
 
-    max_words = 15000  # Increase the vocabulary size
-    max_len = 50  # Adjust the sequence length
+    max_words = 15000
+    max_len = 50
 
     logger.info("Initializing tokenizer...")
     tokenizer = Tokenizer(num_words=max_words, oov_token="<OOV>")
@@ -94,9 +67,9 @@ if __name__ == "__main__":
 
     logger.info("Defining the model...")
     model = Sequential([
-        Embedding(input_dim=max_words, output_dim=128, input_length=max_len),  # Increased embedding dimension
-        GRU(128, return_sequences=True),  # Changed LSTM to GRU
-        Dropout(0.5),  # Increased dropout rate
+        Embedding(input_dim=max_words, output_dim=128, input_length=max_len),
+        GRU(128, return_sequences=True),
+        Dropout(0.5),
         GRU(64),
         Dropout(0.5),
         Dense(32, activation='relu'),
@@ -118,4 +91,48 @@ if __name__ == "__main__":
     history = model.fit(X_train_pad, y_train_cat, epochs=20, batch_size=64, validation_data=(X_test_pad, y_test_cat), callbacks=[early_stopping])
     logger.debug("Model trained.")
 
+    logger.info("Saving the model...")
+    model.save('sentiment_model.h5')
+    logger.debug("Model Saved.")
+
     evaluateModel(model, history, X_test_pad, y_test_cat)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Train an ai Model to predict tweet sentiment rating as 0 Negative, 2 Neutral, or 4 Positive.")
+
+    parser.add_argument(
+        '--debug',
+        type=int,
+        choices=[0, 1, 2],
+        default=1,
+        help='Set the debug level (0 = Warnings Only, 1 = Warnings and Info, 2 = Debugging)'
+    )
+
+    parser.add_argument(
+        '-dir', '--directory',
+        type=str,
+        default="../model/",
+        help='Path to the model directory (default: "../model/")',
+        dest='directory'
+    )
+    parser.add_argument(
+        '-fn', '--file_name',
+        type=str,
+        default="sentiment_model",
+        help='Name of the model file (default: "sentiment_model")',
+        dest='file_name'
+    )
+
+    args = parser.parse_args()
+
+    if os.name == 'nt':  # 'nt' indicates Windows
+        args.directory = args.directory.replace('/', '\\')
+
+    if args.debug == 0:
+        level = logging.WARNING
+    elif args.debug == 1:
+        level = logging.INFO
+    else:
+        level = logging.DEBUG
+
+    run(file_name=args.file_name, directory=args.directory,log_level=level)

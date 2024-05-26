@@ -16,7 +16,7 @@ import os
 # ----- Package Imports
 from training_utils import *
 
-def run(log_level=logging.INFO):
+def run(file_name='sentiment_model', directory='../model/', log_level=logging.INFO):
     logger = getLogger(level=log_level)
 
     logger.info("##### BEGIN #####")
@@ -94,6 +94,8 @@ def run(log_level=logging.INFO):
     logger.info("Saving the model...")
     model.save('sentiment_model.h5')
     logger.debug("Model Saved.")
+
+    saveModel(file_name, directory, model)
 
     evaluateModel(model, history, X_test_pad, y_test_cat)
 

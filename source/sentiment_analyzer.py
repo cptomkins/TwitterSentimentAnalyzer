@@ -17,9 +17,12 @@ class SentimentAnalyzer:
         self.max_words = max_words
         self.max_len = max_len
         self.logger = getLogger(__name__, level=logging.DEBUG if debug else logging.INFO)
-        self.tokenizer = Tokenizer(num_words=max_words, oov_token="<OOV>")
         self.model = None
         self.debug = debug
+
+    def initTokenizer(self, X_train):
+        self.tokenizer = Tokenizer(num_words=self.max_words, oov_token="<OOV>")
+        self.tokenizer.fit_on_texts(X_train)
 
     def load_data(self, data_path='../dataset/training.1600000.processed.noemoticon.csv'):
         df = pd.read_csv(data_path, encoding='ISO-8859-1')
@@ -28,7 +31,7 @@ class SentimentAnalyzer:
         return train_test_split(tweets, sentiments, test_size=0.2, random_state=42)
     
     def preprocess_data(self, X_train, X_test):
-        self.tokenizer.fit_on_texts(X_train)
+        self.initTokenizer(X_train)
         X_train_seq = self.tokenizer.texts_to_sequences(X_train)
         X_test_seq = self.tokenizer.texts_to_sequences(X_test)
         return pad_sequences(X_train_seq, maxlen=self.max_len), pad_sequences(X_test_seq, maxlen=self.max_len)

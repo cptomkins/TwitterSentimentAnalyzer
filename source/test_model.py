@@ -1,12 +1,15 @@
 from tensorflow.keras.models import load_model
-import testing_utils
+from sentiment_analyzer import SentimentAnalyzer
 
 
 if __name__=='__main__':
     # Load the saved model
-    model_path = input("\nPlease provide the path to the model:\n")
+    model_path = '../model/sentiment_model.h5'
 
-    model = load_model(model_path)
+    analyzer = SentimentAnalyzer()
+    X_train, X_test, y_train, y_test = analyzer.load_data()
+    analyzer.initTokenizer(X_train)
+    analyzer.model = load_model(model_path)
 
     while True:
 
@@ -14,6 +17,6 @@ if __name__=='__main__':
         if text == 'exit':
             break
 
-        answer = testing_utils.predict_sentiment(model, text)
+        answer = analyzer.predict_sentiment(text)
 
         print(answer)
